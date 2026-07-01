@@ -1,114 +1,77 @@
-# KaGo — Karlsruhe transit, as a Flutter demo
+# KaGo — Karlsruhe transit (KVV)
 
-**KaGo** is a small, **production-shaped** Flutter client for the Karlsruhe region (**KVV**): search stops, browse live-style departures, and plan connections. It is written as a **clean reference demo**—clear layering, predictable state, Material 3 UI, and a tiny **Cloudflare Worker** that turns the official **TRIAS** XML API into simple JSON so the app stays readable and easy to fork.
+**Production-shaped** Flutter client for the Karlsruhe region: search stops, browse departures, plan connections. A **BLoC + repository** reference with a thin **Cloudflare Worker** that translates TRIAS XML → JSON.
 
-Use it as a template for: **BLoC + repositories**, **multi-platform** targets (iOS, Android, web), and **real HTTP** without running a Java or Node “monolith” on your laptop.
+| | |
+|---|---|
+| **Live demo** | [kago.lelarge.dev](https://kago.lelarge.dev) |
+| **Portfolio** | [lelarge.dev](https://lelarge.dev) |
+| **API** | [api.kago.lelar.ge](https://api.kago.lelar.ge) |
+| **Author** | [Tim Le Large](https://github.com/tim-le-large) |
 
 ---
 
-## Why this repo exists
+## What this demo shows
 
-- **Flutter first:** One codebase, familiar patterns, no framework experiments in the UI layer.
-- **Thin backend:** The Worker only translates TRIAS → JSON and hides credentials. All product logic worth reading lives in Dart.
-- **Honest scope:** Three screens, a handful of blocs, and widgets you can reuse—easy to navigate in an afternoon.
+- **API integration:** Real HTTP against a custom backend — not hardcoded JSON in the app
+- **Clean architecture:** Feature slices (`data` / `bloc` / `presentation`) with testable repositories
+- **State management:** BLoC with `bloc_concurrency` restartable transformers for search
+- **Thin edge backend:** Cloudflare Worker holds TRIAS credentials; Flutter only sees public JSON
+
+Good reference for **domain apps with external APIs** — ÖPNV, logistics, or any REST-shaped integration.
 
 ---
 
 ## Features
 
-| Area | What you get |
-|------|----------------|
+| Area | Details |
+|------|---------|
 | **Stops** | Debounced search, list → detail navigation |
-| **Departures** | Chronological board, pull-to-refresh, periodic UI refresh for “in N min” |
+| **Departures** | Chronological board, pull-to-refresh, periodic UI refresh |
 | **Trips** | Origin/destination search and connection results |
-| **Settings** | Light / dark theme (persisted) |
-| **Offline story** | Optional **fake** repositories for UI work without any network |
+| **Settings** | Light / dark theme (persisted via `shared_preferences`) |
+| **Offline dev** | Optional fake repositories (`USE_FAKE_LOCATIONS=true`) |
 
 ---
 
 ## Architecture
 
-The app follows a classic **feature slice** layout under `lib/`:
-
 ```
 lib/
   config/           # API base URL, compile-time toggles
-  shell/            # Bottom navigation + tab bodies
-  locations/        # data/ · bloc/ · presentation/
-  departures/       # data/ · bloc/ · presentation/
-  trips/            # data/ · bloc/ · presentation/
-  settings/         # data/ · bloc/ · presentation/
-  theme/              # Material 3 light/dark, scroll behavior
-  widgets/            # Shared UI (badges, empty states)
+  shell/            # Bottom navigation
+  locations/        # data · bloc · presentation
+  departures/       # data · bloc · presentation
+  trips/            # data · bloc · presentation
+  settings/         # data · bloc · presentation
+  theme/            # Material 3 light/dark
+  widgets/          # Line badges, empty states
+api-proxy/          # Cloudflare Worker (TRIAS → JSON)
 ```
 
-**Data flow**
-
-1. **Repositories** (`Http*Repository` / `Fake*Repository`) perform HTTP or return stub data.
-2. **BLoC / Cubit** expose events and immutable states; UI only reacts to state.
-3. **Presentation** widgets stay mostly stateless; navigation receives `RepositoryProvider` from `main.dart` via `context.read<>()`.
-
-**Dependency injection**
-
-- `MultiRepositoryProvider` registers shared repositories once in `main.dart`.
-- **Departures** uses a `BlocProvider` created on the stop route so each screen owns a short-lived bloc and does not leak subscriptions across pops.
+**Data flow:** UI → BLoC/Cubit → `Http*Repository` → Worker JSON API. Departures use a route-scoped `BlocProvider` so subscriptions do not leak across navigation.
 
 ---
 
-## State management (BLoC)
+## API
 
-| Piece | Role |
-|-------|------|
-| `LocationsBloc` | Search stops; `bloc_concurrency` **restartable** transformer so only the latest query matters. |
-| `DeparturesBloc` | Load and sort departures by time; same restartable pattern for refresh. |
-| `TripsBloc` | Trip search with loading / success / failure states. |
-| `SettingsCubit` | Theme mode; reads/writes via `SettingsRepository` + `shared_preferences`. |
+The app talks only to JSON endpoints (never parses TRIAS XML).
 
-States and events use **sealed-style patterns** with `equatable` where it helps value equality. The goal is boring, test-friendly state—not clever indirection.
-
----
-
-## API usage
-
-The mobile/web app talks **only** to JSON endpoints. It never parses TRIAS XML.
-
-**Default base URL** is set in `lib/config/api_config.dart` (`ApiConfig.defaultBaseUrl`). Point it at your deployed Worker or, for local development, at `http://127.0.0.1:8787` while the proxy runs (see below).
+Default base URL: `lib/config/api_config.dart` → `https://api.kago.lelar.ge`
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/api/v1/locations?q=…&limit=…` | Stop search |
-| `GET` | `/api/v1/departures?stopRef=…&limit=…` | Departures at a stop (`when` optional on the proxy) |
-| `POST` | `/api/v1/trips` | Connection search (JSON body) |
+| `GET` | `/api/v1/locations?q=…` | Stop search |
+| `GET` | `/api/v1/departures?stopRef=…` | Departures at a stop |
+| `POST` | `/api/v1/trips` | Connection search |
 
-**Trip body example**
-
-```json
-{
-  "originRef": "de:08212:90",
-  "destRef": "de:08212:1003",
-  "departureTime": "2026-04-09T17:00:00Z"
-}
-```
-
-`departureTime` is optional. Stop IDs come from the locations response.
-
-The **Worker** implementation, env vars, and deploy notes live in [`api-proxy/README.md`](api-proxy/README.md).
+Worker details: [`api-proxy/README.md`](api-proxy/README.md)
 
 ---
 
-## Design & UX
+## Quick start
 
-- **Material 3** with a single teal seed color, generated light/dark **ColorScheme**s, and consistent radii (`AppTheme`).
-- **NavigationBar** in a floating-style shell with soft elevation and clear selected states.
-- **Typography:** Slightly tightened titles, tabular figures for times where it matters.
-- **Feedback:** Pull-to-refresh, haptics on key taps, empty and error states that invite retry instead of dead ends.
-- **Scrolling:** `AppScrollBehavior` enables drag-to-dismiss keyboard on mobile-style scroll views.
-
----
-
-## Run locally
-
-### 1. API proxy (optional if using fake data)
+### 1. API proxy (optional)
 
 ```bash
 cd api-proxy
@@ -118,13 +81,13 @@ export TRIAS_REQUESTOR_REF=your-ref
 npm run dev
 ```
 
-Default listen address: `http://127.0.0.1:8787`.
+Runs at `http://127.0.0.1:8787` — point `ApiConfig` at this URL for local dev.
 
 ### 2. Flutter app
 
 ```bash
 flutter pub get
-flutter run
+flutter run -d chrome
 ```
 
 **UI-only mode** (no backend):
@@ -137,43 +100,38 @@ flutter run --dart-define=USE_FAKE_LOCATIONS=true
 
 ## Tests
 
-The repo includes **lightweight tests** you can extend as the app grows:
-
-| File | What it covers |
-|------|----------------|
-| `test/departure_test.dart` | `Departure.fromJson`, `Departure.parsePlannedTime` (ISO + space-separated dates) |
-| `test/location_test.dart` | `Location.fromJson` |
-| `test/trip_model_test.dart` | `Leg.isWalk`, `Journey.fromJson` |
-| `test/widget_test.dart` | App boots, **Haltestellen** empty state; switching to **Verbindung** shows the trip search subtitle (`SharedPreferences` mocked; surface size set for layout) |
-
-Run everything:
-
 ```bash
 flutter test
 ```
 
-Run a single file:
-
-```bash
-flutter test test/departure_test.dart
-```
-
-Tests do **not** call the real API on load (search is idle until you type). No `dart-define` is required for `flutter test`.
+| File | Covers |
+|------|--------|
+| `test/departure_test.dart` | `Departure.fromJson`, time parsing |
+| `test/location_test.dart` | `Location.fromJson` |
+| `test/trip_model_test.dart` | `Leg.isWalk`, `Journey.fromJson` |
+| `test/widget_test.dart` | App boot, tab navigation |
 
 ---
 
 ## Security
 
-Do **not** commit `TRIAS_REQUESTOR_REF` or embed it in the app. The Worker holds the secret; the Flutter client only sees public JSON. Copy `.env.example` to `.env` for local proxy usage (see `api-proxy` docs).
+Do **not** commit `TRIAS_REQUESTOR_REF` or embed it in the Flutter app. The Worker holds the secret; the client only sees public JSON.
 
 ---
 
-## Reference deployment
+## Deploy
 
-- **Web:** [kago.lelar.ge](https://kago.lelar.ge)  
-- **API:** [api.kago.lelar.ge](https://api.kago.lelar.ge)  
+- **Web:** GitHub Actions → GitHub Pages (see `.github/workflows/deploy-frontend-pages.yml`)
+- **API:** `cd api-proxy && npx wrangler deploy`
 
-CI builds the web target with GitHub Actions (see `.github/workflows/`).
+---
+
+## Related portfolio projects
+
+| App | Stack | Live |
+|-----|-------|------|
+| [SquadBoard](https://github.com/tim-le-large/squadboard) | Firebase, Riverpod | [squadboard.lelarge.dev](https://squadboard.lelarge.dev) |
+| [FinFlow](https://github.com/tim-le-large/finflow) | Supabase, Riverpod | [finflow.lelarge.dev](https://finflow.lelarge.dev) |
 
 ---
 

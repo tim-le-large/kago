@@ -5,6 +5,7 @@
 | | |
 |---|---|
 | **Live demo** | [kago.lelarge.dev](https://kago.lelarge.dev) |
+| **GitHub** | [tim-le-large/kago](https://github.com/tim-le-large/kago) |
 | **Portfolio** | [lelarge.dev](https://lelarge.dev) |
 | **API** | [api.kago.lelar.ge](https://api.kago.lelar.ge) |
 | **Author** | [Tim Le Large](https://github.com/tim-le-large) |
